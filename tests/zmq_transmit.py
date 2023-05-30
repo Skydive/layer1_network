@@ -118,14 +118,12 @@ while True:
     fig, axs = plt.subplots(3);
 
 
-
-
-
-    plt.show();
-
-    samples = construct_frame(b'\xCA\xFE\x44\xC0\xFF\xEE\xCC' + bytes(num));
+    # transmit 20 +  bytes
+    payload = [0] * 20;
+    samples = construct_frame(b'\xCA\xFE\x44\xC0\xFF\xEE\xCC' + bytes(num) + bytes(payload));
+    
     axs[0].plot(np.arange(samples.size), samples)
-
+    
     SPS = 2;
     tx_samples = np.zeros(samples.size*SPS, dtype='complex64');
     tx_samples[::SPS] = samples;

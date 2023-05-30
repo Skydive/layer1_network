@@ -16,7 +16,7 @@ vector<complex<T>> mm_sync(const vector<complex<T>>& samples, int sps) {
     float mu = 0;
     auto out = vector<complex<T>>(samples.size() + 10);
     auto out_rail = vector<complex<float>>(samples.size() + 10);
-    int i_in = 0, i_out = 2;
+    size_t i_in = 0, i_out = 2;
     while(i_out < samples.size() && i_in+16 < samples.size()) {
         out[i_out] = samples[i_in + int(mu)];
         out_rail[i_out] = complex<float>{(float)int(real(out[i_out]) > 0), (float)int(imag(out[i_out]) > 0)};
@@ -34,20 +34,21 @@ vector<complex<T>> mm_sync(const vector<complex<T>>& samples, int sps) {
 }
 
 void demod(const complex<float>& data) {
-    int idx = 0;
+    static int demod_cnt = 0;
+    demod_cnt++;
 
-    static deque<float> prev_power_floor(3);
-    static vector<complex<float>> power_floor_hist(3, 0);
+    static deque<float> prev_power_floor(8);
+    static vector<complex<float>> power_floor_hist(8, 0);
     static int power_floor_idx = 0;
     // Calculate current power floor
-    float power_floor = 0;
-    for(int i=0; i<power_floor_hist.size(); i++)
-        power_floor += abs(power_floor_hist[i]);
-    power_floor /= power_floor_hist.size();
+    float power_floor_avg = 0;
+    for(size_t i=0; i<power_floor_hist.size(); i++)
+        power_floor_avg += abs(power_floor_hist[i]);
+    power_floor_avg /= power_floor_hist.size();
 
     prev_power_floor.pop_front();
-    prev_power_floor.push_back(power_floor);
-    float last_power_floor = prev_power_floor.front();
+    prev_power_floor.push_back(power_floor_avg);
+    float last_power_floor_avg = prev_power_floor.front();
 
     // Add to power floor
     power_floor_hist[power_floor_idx++] = data;
@@ -55,9 +56,11 @@ void demod(const complex<float>& data) {
 
     static bool trigger_state = false;
     static vector<complex<float>> captured_samples(CAPTURE_BUFFER_SIZE);
-    static int captured_samples_read_idx = 0;
+    static size_t captured_samples_read_idx = 0;
 
-    if(!trigger_state && power_floor - last_power_floor > 0.3) {
+    float trigger_rise_factor = globals::program.get<float>("--rthreshold");
+    // cout << last_power_floor_avg << "\t" << power_floor_avg << endl;
+    if(!trigger_state && power_floor_avg - last_power_floor_avg > trigger_rise_factor*last_power_floor_avg) {
         trigger_state = true;
         cout << "TRIGGERED" << endl;
         captured_samples_read_idx = 0;
@@ -80,10 +83,10 @@ void demod(const complex<float>& data) {
         // fout.close();
 
         vector<uint8_t> bits(samples_sync.size()-1);
-        for(int i=0; i<samples_sync.size(); i++) {
+        for(size_t i=0; i<samples_sync.size(); i++) {
             demod_samples[i] = arg(samples_sync[i]);
         }
-        for(int i=0; i<bits.size(); i++) {
+        for(size_t i=0; i<bits.size(); i++) {
             float dphi = arg(samples_sync[i+1]) - arg(samples_sync[i]);
             if(dphi < 0) {
                 dphi += 2.0f * M_PI;
@@ -97,25 +100,34 @@ void demod(const complex<float>& data) {
 
         const static vector<uint8_t> SYNC = {1,1,1,0,0,0,0,1,0,1,0,1,1,0,1,0,1,1,1,0,1,0,0,0,1,0,0,1,0,0,1,1}; 
         auto it = std::search(bits.begin(), bits.end(), SYNC.begin(), SYNC.end());
-        if(it == SYNC.end()) {
+        if(it == bits.end()) {
+            // Verbose
+            if(globals::verbosity > 0) {
+                cerr << "Frame dropped: No preamble detected!" << endl;
+            }
             return;
         }
 
-        int frame_idx = std::distance(bits.begin(), it);
+        // 
+
+        int frame_idx = std::distance(bits.begin(), it); 
         int end_frame_idx = frame_idx + SYNC.size();
+
+        // cout << demod_cnt << ": frame_idx: " << frame_idx << " SYNC_SIZE: " << SYNC.size() << endl;
 
         vector<uint8_t> decoded_bytes;
 
         // cout << "BYTES: ";
-        for(int i=end_frame_idx; i<bits.size(); i += 8) {
+        for(size_t i=end_frame_idx; i<bits.size(); i += 8) {
             uint8_t value = 0;
-            for(int j=i; j<i+8; j++) {
+            for(auto j=i; j<i+8; j++) {
                 value |= (bits[j] << (7 - (j-i)));
             }
             decoded_bytes.push_back(value);
         }
         // cout << endl;
 
+        // cout << demod_cnt << ": PRE-DECODE: " << decoded_bytes.size() << "BITS-N: " << bits.size() << endl;
         decode_bytes(decoded_bytes);
 
         // TODO: Benchmark 

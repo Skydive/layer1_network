@@ -8,14 +8,13 @@ SRC_DIR = src
 OBJ_DIR = obj
 OUT_DIR = bin
 
-FLAGS_DEP := $(shell pkg-config --cflags --libs cppzmq) -I include
-FLAGS_EXTRA = -mtune=native -O2
+FLAGS_DEP := $(shell pkg-config --cflags --libs cppzmq iir) -I include
+# FLAGS_EXTRA = -mtune=native -march=native -O2
 FLAGS_DEBUG = -Wextra -g
 
 CFLAGS := $(CFLAGS) $(FLAGS_DEP) $(FLAGS_EXTRA) $(FLAGS_DEBUG)
 
-
-SRCS = decode.c demod.c
+SRCS = decode.cpp demod.cpp tun.cpp util.cpp
 TARGETS = zmq_analyse zmq_transmit
 
 OBJS = $(addsuffix .o,$(addprefix $(OBJ_DIR)/,$(basename $(SRCS))))

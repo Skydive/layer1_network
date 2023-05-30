@@ -11,4 +11,5 @@ We use Python for debugging/testing.
 - pkg-config ()
 - cppzmq (C++ ZMQ header only bindings)
 - Python (numpy, matplotlib, scipy, pyzmq)
+- Iir1 (https://github.com/berndporr/iir1) [Nix build file included]
 
